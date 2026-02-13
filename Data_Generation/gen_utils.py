@@ -38,13 +38,6 @@ def generate_heatmap(image_size, point_coords_pixel, sigma):
     
     return heatmap
 
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for faster generation
-import numpy as np
-from PIL import Image
-import io
-
 def generate_scatter_plot(
     image_size=224,
     min_points=50,
@@ -327,48 +320,58 @@ def generate_dataset(num_samples, output_dir, split):
     
     for i in range(num_samples):
         # Generate scatter plot and get point coordinates
-        img, data_coords, pixel_coords = generate_scatter_plot(
-                                                                image_size=config.IMAGE_SIZE,
-                                                                min_points=config.MIN_POINTS,
-                                                                max_points=config.MAX_POINTS,
-                                                                axis_range=config.AXIS_RANGE,
-                                                                min_distance=config.MIN_DISTANCE,
-                                                                overlap_probability=config.OVERLAP_PROBABILITY
-                                                            )
+        img, data_coords, pixel_coords, params = generate_scatter_plot(
+            image_size=config.IMAGE_SIZE,
+            min_points=config.MIN_POINTS,
+            max_points=config.MAX_POINTS,
+            axis_range=config.AXIS_RANGE,
+            min_distance=config.MIN_DISTANCE,
+            overlap_probability=config.OVERLAP_PROBABILITY
+        )
         
         # Generate corresponding heatmap
         H, W = config.IMAGE_SIZE, config.IMAGE_SIZE
         heatmap = generate_heatmap((H, W), pixel_coords, sigma=config.GAUSSIAN_SIGMA)
         
         # Save image and heatmap
-        img_path = f"{output_dir}/images/{split}_{i:05d}.png"
-        heatmap_path = f"{output_dir}/heatmaps/{split}_{i:05d}.png"
+        img_filename = f"{split}_{i:05d}.png"
+        img_path = f"{output_dir}/images/{img_filename}"
+        heatmap_path = f"{output_dir}/heatmaps/{img_filename}"
         
         save_image(img, img_path)
         save_image(heatmap, heatmap_path)
         
-        # TODO: Finish annotation
         # Store metadata
-        annotations[f"{split}_{i:05d}.png"] = {
-            "data_coords": data_coords,
+        annotations[img_filename] = {
+            "num_points": len(pixel_coords),
             "pixel_coords": pixel_coords,
+            "image_size": [H, W],
+            "params": params,
+            "data_coords": data_coords,
+            "gaussian_sigma": config.GAUSSIAN_SIGMA,
+            "axis_range": config.AXIS_RANGE,
         }
     
     # Save annotations
-    with open(f"data/metadata/{split}_annotations.json", 'w') as f:
+    metadata_path = f"/scratch/gssodhi/data_extract/metadata/{split}_annotations.json"
+    os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
+    with open(metadata_path, 'w') as f:
         json.dump(annotations, f, indent=2)
+    
+    print(f"Generated {num_samples} {split} samples")
+    print(f"Saved to {output_dir}")
+    print(f"Metadata saved to {metadata_path}")
 
 # Generate the dataset
 def main():
     # Set random seed for reproducibility
     np.random.seed(42)  
 
-    # TODO: Set output directories
     # Generate training data
     print("Generating training data...")
     generate_dataset(
         num_samples=config.NUM_TRAIN,
-        output_dir="",
+        output_dir="/scratch/gssodhi/data_extract/train",
         split="train"
     )
     
@@ -376,7 +379,7 @@ def main():
     print("Generating validation data...")
     generate_dataset(
         num_samples=config.NUM_VAL,
-        output_dir="",
+        output_dir="/scratch/gssodhi/data_extract/val",
         split="val"
     )
     
@@ -384,7 +387,7 @@ def main():
     print("Generating test data...")
     generate_dataset(
         num_samples=configNUM_TEST,
-        output_dir="",
+        output_dir="/scratch/gssodhi/data_extract/test",
         split="test"
     )
 

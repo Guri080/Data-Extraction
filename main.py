@@ -3,8 +3,11 @@ from torch import optim, nn
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
+import os
 
 from UNet import HeatmapModel
+from dataloader import ScatterPointDataset
+import training_config as config
 
 def train(model, loader, optimizer, criterion, device):
     model.train()
@@ -46,10 +49,7 @@ def test(model, loader, criterion, device):
     return total_loss
 
 if __name__ == '__main__':
-    LEARNING_RATE = 3e-4
-    BATCH_SIZE = 32
-    EPOCHS = 2
-    DATA_PATH = "/content/drive/MyDrive/uygar/unet-segmentation/data"
+    DATA_PATH = "/scratch/gssodhi/data_extract"
     MODEL_SAVE_PATH = "/content/drive/MyDrive/uygar/unet-segmentation/models/unet.pth"
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -58,8 +58,31 @@ if __name__ == '__main__':
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.BCEWithLogitsLoss()
 
-    train_loader = None
-    val_loader = None
+    train_dataset = ScatterPointDataset(os.path.join(DATA_PATH, 'train/images'),
+                                        os.path.join(DATA_PATH, 'train/heatmaps') 
+    )
+
+    val_dataset = ScatterPointDataset(os.path.join(DATA_PATH, 'val/images'),
+                                      os.path.join(DATA_PATH, 'val/heatmaps') 
+    )
+    
+    train_loader = DataLoader(train_dataset,
+                            batch_size=config.BATCH_SIZE,
+                            shuffle=True,
+                            pin_memory=True,
+                            persistent_workers=True,
+                            prefetch_factor=4,
+                            num_workers=config.NUM_WORKERS
+                        )
+
+    val_loader = DataLoader(val_dataset,
+                            batch_size=config.BATCH_SIZE,
+                            shuffle=False,
+                            pin_memory=True,
+                            persistent_workers=True,
+                            prefetch_factor=4,
+                            num_workers=config.NUM_WORKERS
+                        )
 
 
     for epoch in EPOCHS:
