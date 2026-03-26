@@ -1,3 +1,4 @@
+from torchvision import transforms
 from torch.utils.data import Dataset
 from PIL import Image
 import os
@@ -7,10 +8,16 @@ class ScatterPointDataset(Dataset):
         self.image_dir = image_dir
         self.heatmap_dir = heatmap_dir
         self.transform = transform
+        if transform is None: 
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),  # Convert PIL to tensor [0, 1]
+            ])
+        else:
+            self.transform = transform
         self.image_files = sorted(os.listdir(image_dir))
 
     def __len__(self):
-        return len(image_files)
+        return len(self.image_files)
     
     def __getitem__(self, idx):
         img_name = self.image_files[idx]
@@ -20,9 +27,8 @@ class ScatterPointDataset(Dataset):
         image = Image.open(img_path).convert('RGB')
         heatmap = Image.open(heatmap_path).convert('L')
 
-        if self.transform:
-            image = self.transform(image)
-            heatmap = self.transform(heatmap)
+        image = self.transform(image)
+        heatmap = self.transform(heatmap)
         
         return image, heatmap
 

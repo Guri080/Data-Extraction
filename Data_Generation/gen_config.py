@@ -1,7 +1,6 @@
 # Generation parameters
-NUM_TRAIN = 5000
-NUM_VAL = 1000
-NUM_TEST = 500
+NUM_TRAIN = 15000
+NUM_VAL = 2000
 
 IMAGE_SIZE = 224  # Height and width
 

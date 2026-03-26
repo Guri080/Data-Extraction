@@ -41,35 +41,43 @@ class _Decoder(nn.Module):
         self.up1 = nn.ConvTranspose2d(256, 64, kernel_size=2, stride=2)
         self.conv1 = nn.Conv2d(64 + 64, 64, kernel_size=3, padding=1)
         
+        # ADD THIS: One more upsampling to reach original size
+        self.up0 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
+        self.conv0 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        
         # Final output layer
         self.final = nn.Conv2d(64, 1, kernel_size=1)
         self.sigmoid = nn.Sigmoid()
     
     def forward(self, x0, x1, x2, x3, x4):
-        # x4 is the deepest feature (2048 channels)
+        # x4 is the deepest feature (2048 channels, 7x7)
         
-        # Upsample and concatenate with x3
+        # Upsample and concatenate with x3 (14x14)
         d4 = self.up4(x4)
-        d4 = torch.cat([d4, x3], dim=1)  # Concatenate skip connection
+        d4 = torch.cat([d4, x3], dim=1)
         d4 = self.conv4(d4)
         
-        # Upsample and concatenate with x2
+        # Upsample and concatenate with x2 (28x28)
         d3 = self.up3(d4)
         d3 = torch.cat([d3, x2], dim=1)
         d3 = self.conv3(d3)
         
-        # Upsample and concatenate with x1
+        # Upsample and concatenate with x1 (56x56)
         d2 = self.up2(d3)
         d2 = torch.cat([d2, x1], dim=1)
         d2 = self.conv2(d2)
         
-        # Upsample and concatenate with x0
+        # Upsample and concatenate with x0 (112x112)
         d1 = self.up1(d2)
         d1 = torch.cat([d1, x0], dim=1)
         d1 = self.conv1(d1)
         
+        # Final upsample to original size (224x224)
+        d0 = self.up0(d1)
+        d0 = self.conv0(d0)
+        
         # Final heatmap
-        out = self.final(d1)
+        out = self.final(d0)
         out = self.sigmoid(out)
         
         return out
@@ -79,8 +87,8 @@ class HeatmapModel(nn.Module):
     def __init__(self):
         super().__init__()
         resnet = models.resnet50(pretrained=True)
-        self._encoder = ResNetEncoder(resnet)
-        self._decoder = Decoder()
+        self.encoder =  _ResNetEncoder(resnet)
+        self.decoder = _Decoder()
     
     def forward(self, x):
         # Extract features at multiple scales
