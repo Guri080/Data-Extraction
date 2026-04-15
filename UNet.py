@@ -2,99 +2,80 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
+
+def conv_block(in_ch, out_ch):
+    return nn.Sequential(
+        nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+        nn.BatchNorm2d(out_ch),
+        nn.ReLU(inplace=True)
+    )
+
+
 class _ResNetEncoder(nn.Module):
     def __init__(self, resnet):
         super().__init__()
-        self.conv1 = resnet.conv1
-        self.bn1 = resnet.bn1
-        self.relu = resnet.relu
+        self.conv1   = resnet.conv1
+        self.bn1     = resnet.bn1
+        self.relu    = resnet.relu
         self.maxpool = resnet.maxpool
-        self.layer1 = resnet.layer1
-        self.layer2 = resnet.layer2
-        self.layer3 = resnet.layer3
-        self.layer4 = resnet.layer4
-    
+        self.layer1  = resnet.layer1
+        self.layer2  = resnet.layer2
+        self.layer3  = resnet.layer3
+        self.layer4  = resnet.layer4
+
     def forward(self, x):
-        # Save features at each stage for skip connections
-        x0 = self.relu(self.bn1(self.conv1(x)))  # 64 channels
-        x1 = self.layer1(self.maxpool(x0))        # 256 channels
-        x2 = self.layer2(x1)                      # 512 channels
-        x3 = self.layer3(x2)                      # 1024 channels
-        x4 = self.layer4(x3)                      # 2048 channels
-        
-        return x0, x1, x2, x3, x4  # Return all intermediate features
+        x0 = self.relu(self.bn1(self.conv1(x)))  # 112×112×64
+        x1 = self.layer1(self.maxpool(x0))        # 56×56×256
+        x2 = self.layer2(x1)                      # 28×28×512
+        x3 = self.layer3(x2)                      # 14×14×1024
+        x4 = self.layer4(x3)                      # 7×7×2048
+        return x0, x1, x2, x3, x4
 
 
 class _Decoder(nn.Module):
-    def __init__(self):
+    def __init__(self, num_keypoints=1):
         super().__init__()
-        # Upsampling blocks - going from deep to shallow
-        self.up4 = nn.ConvTranspose2d(2048, 1024, kernel_size=2, stride=2)
-        self.conv4 = nn.Conv2d(1024 + 1024, 1024, kernel_size=3, padding=1)
-        
-        self.up3 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
-        self.conv3 = nn.Conv2d(512 + 512, 512, kernel_size=3, padding=1)
-        
-        self.up2 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(256 + 256, 256, kernel_size=3, padding=1)
-        
-        self.up1 = nn.ConvTranspose2d(256, 64, kernel_size=2, stride=2)
-        self.conv1 = nn.Conv2d(64 + 64, 64, kernel_size=3, padding=1)
-        
-        # ADD THIS: One more upsampling to reach original size
-        self.up0 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
-        self.conv0 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        
-        # Final output layer
-        self.final = nn.Conv2d(64, 1, kernel_size=1)
-        self.sigmoid = nn.Sigmoid()
-    
+
+        self.up4   = nn.ConvTranspose2d(2048, 1024, kernel_size=2, stride=2)
+        self.conv4 = conv_block(1024 + 1024, 1024)
+
+        self.up3   = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
+        self.conv3 = conv_block(512 + 512, 512)
+
+        self.up2   = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.conv2 = conv_block(256 + 256, 256)
+
+        self.up1   = nn.ConvTranspose2d(256, 64, kernel_size=2, stride=2)
+        self.conv1 = conv_block(64 + 64, 64)
+
+        # no skip connection available at 224×224, just upsample and refine
+        self.up0   = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
+        self.conv0 = conv_block(64, 64)
+
+        self.final = nn.Sequential(
+            nn.Conv2d(64, num_keypoints, kernel_size=1),
+        )
+
     def forward(self, x0, x1, x2, x3, x4):
-        # x4 is the deepest feature (2048 channels, 7x7)
-        
-        # Upsample and concatenate with x3 (14x14)
-        d4 = self.up4(x4)
-        d4 = torch.cat([d4, x3], dim=1)
-        d4 = self.conv4(d4)
-        
-        # Upsample and concatenate with x2 (28x28)
-        d3 = self.up3(d4)
-        d3 = torch.cat([d3, x2], dim=1)
-        d3 = self.conv3(d3)
-        
-        # Upsample and concatenate with x1 (56x56)
-        d2 = self.up2(d3)
-        d2 = torch.cat([d2, x1], dim=1)
-        d2 = self.conv2(d2)
-        
-        # Upsample and concatenate with x0 (112x112)
-        d1 = self.up1(d2)
-        d1 = torch.cat([d1, x0], dim=1)
-        d1 = self.conv1(d1)
-        
-        # Final upsample to original size (224x224)
-        d0 = self.up0(d1)
-        d0 = self.conv0(d0)
-        
-        # Final heatmap
-        out = self.final(d0)
-        out = self.sigmoid(out)
-        
-        return out
+        d4 = self.conv4(torch.cat([self.up4(x4), x3], dim=1))
+        d3 = self.conv3(torch.cat([self.up3(d4), x2], dim=1))
+        d2 = self.conv2(torch.cat([self.up2(d3), x1], dim=1))
+        d1 = self.conv1(torch.cat([self.up1(d2), x0], dim=1))
+        d0 = self.conv0(self.up0(d1))
+        return self.final(d0)
 
 
 class HeatmapModel(nn.Module):
-    def __init__(self):
+    def __init__(self, num_keypoints=1, freeze_encoder=True):
         super().__init__()
-        resnet = models.resnet50(pretrained=True)
-        self.encoder =  _ResNetEncoder(resnet)
-        self.decoder = _Decoder()
-    
+        resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        self.encoder = _ResNetEncoder(resnet)
+        self.decoder = _Decoder(num_keypoints=num_keypoints)
+
+        if freeze_encoder:
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+
     def forward(self, x):
-        # Extract features at multiple scales
         x0, x1, x2, x3, x4 = self.encoder(x)
-        
-        # Decode with skip connections
-        heatmap = self.decoder(x0, x1, x2, x3, x4)
-        
-        return heatmap
+        return self.decoder(x0, x1, x2, x3, x4)

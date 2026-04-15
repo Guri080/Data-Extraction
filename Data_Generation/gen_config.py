@@ -1,16 +1,16 @@
 # Generation parameters
-NUM_TRAIN = 15000
+NUM_TRAIN = 10000
 NUM_VAL = 2000
 
 IMAGE_SIZE = 224  # Height and width
 
 # Point generation
-MIN_POINTS = 50
+MIN_POINTS = 10
 MAX_POINTS = 300
 
 # Overlap settings
-OVERLAP_PROBABILITY = 0.4  # 30% chance of intentional overlaps
-MIN_DISTANCE = 5  # Minimum distance between points (to control overlap)
+OVERLAP_PROBABILITY = 0.2  # 30% chance of intentional overlaps
+MIN_DISTANCE = 8  # Minimum distance between points (to control overlap)
 
 # Heatmap generation
 GAUSSIAN_SIGMA = 3  # Sigma for Gaussian blobs
